@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # ── MySQL Database ──────────────────────────────────────────
+  db:
+    image: mysql:8.4
+    container_name: logimind-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_production_password_2026
+      MYSQL_DATABASE: logimind_v2
+      MYSQL_USER: logimind_app
+      MYSQL_PASSWORD: logimind_secure_password_2026
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_production_password_2026"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - logimind-network
+
+  # ── Redis Cache & Message Broker ────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: logimind-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - logimind-network
+
+  # ── FastAPI Backend API ──────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: logimind-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - PROJECT_NAME=LOGIMIND v2 - AI Logistics Intelligence Platform
+      - VERSION=2.0.0
+      - DATABASE_URL=mysql+pymysql://logimind_app:logimind_secure_password_2026@db:3306/logimind_v2
+      - SECRET_KEY=logimind-super-secret-production-key-change-in-env-98234729384729
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    networks:
+      - logimind-network
+
+  # ── React Frontend (Nginx) ──────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: logimind-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - logimind-network
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  logimind-network:
+    driver: bridge
